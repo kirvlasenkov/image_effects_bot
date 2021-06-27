@@ -1,17 +1,12 @@
 # -*- coding: utf-8 -*-
 import logging
 from concurrent.futures import ThreadPoolExecutor
-
-# from telegram_token import token
 from io import BytesIO
 from time import sleep
 
-from model import StyleTransferModel
+from image_effects_model import StyleTransferModel
 from telegram.ext import CommandHandler, ConversationHandler, Filters, MessageHandler, Updater
 from telegram.ext.dispatcher import run_async
-
-context = None
-error = None
 
 pool = ThreadPoolExecutor(1)
 
@@ -21,7 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-model = StyleTransferModel()
+image_effects_model = StyleTransferModel()
 content_images_files = {}
 style_images_files = {}
 CONTENT, STYLE = range(2)
@@ -30,31 +25,19 @@ CONTENT, STYLE = range(2)
 def send_prediction_on_photo(content_image_stream, style_image_stream, chat_id, context):
 
     # process images
-    future = pool.submit(model.transfer_style, content_image_stream, style_image_stream)
+    future = pool.submit(
+        image_effects_model.transfer_style, content_image_stream, style_image_stream
+    )
     output = future.result()
 
     # send back
     output_stream = BytesIO()
     output.save(output_stream, format="PNG")
     output_stream.seek(0)
-    # context.bot.send_photo(chat_id, photo=output_stream)
+    context.bot.send_photo(chat_id, photo=output_stream)
     del content_images_files[chat_id]
     del style_images_files[chat_id]
     print("Sent Photo to user")
-
-
-@run_async
-def handle_message(self, bot, update):
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=(
-            "Hi, my name is Image Effects. I can add various effects to the photo, as well as"
-            " increase the quality of the image!"
-        ),
-    )
-    context.bot.send_message(
-        chat_id=update.effective_chat.id, text="What kind of processing are you interested in?"
-    )
 
 
 @run_async
@@ -70,10 +53,57 @@ def get_content_image(update, context):
     return STYLE
 
 
+@run_async
+def get_style_image(update, context):
+    chat_id = update.message.chat_id
+    print("Got image from {}".format(chat_id))
+    image_info = update.message.photo[-1]
+    image_file = context.bot.get_file(image_info)
+    style_image_stream = BytesIO()
+    image_file.download(out=style_image_stream)
+    style_images_files[chat_id] = style_image_stream
+    context.bot.send_message(
+        chat_id=update.effective_chat.id, text="Please wait while processing images..."
+    )
+    send_prediction_on_photo(
+        content_images_files[chat_id], style_images_files[chat_id], chat_id, context
+    )
+    context.bot.send_message(chat_id=update.effective_chat.id, text="Please send content image")
+    return CONTENT
+
+
+@run_async
+def start(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id, text="Please send content image")
+    return CONTENT
+
+
+@run_async
+def cancel(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id, text="Canceled")
+    return ConversationHandler.END
+
+
+style_transfer_handler = ConversationHandler(
+    entry_points=[CommandHandler("start", start)],
+    states={
+        CONTENT: [MessageHandler(Filters.photo, get_content_image, pass_user_data=True)],
+        STYLE: [MessageHandler(Filters.photo, get_style_image, pass_user_data=True)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
+
+
+@run_async
+def error(context, update, error):
+    """Log Errors caused by Updates."""
+    logger.warning('Update "%s" caused error "%s"', update, error)
+
+
 if __name__ == "__main__":
-    TOKEN = "1808716289:AAFp1FjPnsd3QgF7VscBglvfymqYA1q-qF8"
+    TOKEN = ""
     updater = Updater(token=TOKEN, use_context=True)
 
-    # updater.dispatcher.add_handler(style_transfer_handler)
+    updater.dispatcher.add_handler(style_transfer_handler)
     updater.dispatcher.add_error_handler(error)
     updater.start_polling()
