@@ -74,13 +74,23 @@ def get_style_image(update, context):
 
 @run_async
 def start(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Please send content image")
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=(
+            "Hi, my name is Image Effects. I can take a theme from one photo and overlay it on"
+            " another!"
+        ),
+    )
+    context.bot.send_message(
+        chat_id=update.effective_chat.id, text="Please send image which I need to edit"
+    )
     return CONTENT
 
 
 @run_async
 def cancel(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text="Canceled")
+
     return ConversationHandler.END
 
 
@@ -101,7 +111,7 @@ def error(context, update, error):
 
 
 if __name__ == "__main__":
-    TOKEN = ""
+    TOKEN = "1808716289:AAFp1FjPnsd3QgF7VscBglvfymqYA1q-qF8"
     updater = Updater(token=TOKEN, use_context=True)
 
     updater.dispatcher.add_handler(style_transfer_handler)
